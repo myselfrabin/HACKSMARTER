@@ -1,6 +1,6 @@
 <div align="center">
 
-# ☠️ HackSmarter Lab  Prototype Pollution → DOM XSS → Admin Takeover
+#  HackSmarter Lab  Prototype Pollution → DOM XSS → Admin Takeover
 
 [![Platform](https://img.shields.io/badge/Platform-HackSmarter-darkgreen?style=for-the-badge&logo=linux&logoColor=white)](https://hacksmarter.io)
 [![Points](https://img.shields.io/badge/Points-50-228b22?style=for-the-badge)]()
